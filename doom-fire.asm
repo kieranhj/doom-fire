@@ -471,6 +471,30 @@ plot_horizontal_line:
     EOR    R8, R11, R11, LSR #20                ; (similarly involved!)
 .endm
 
+.macro DO_RANDOM_BIT
+	; update colour with some randomness
+	and r7, r8, #1				; rnd & 1
+	subs r4, r4, r7				; colour -= rnd & 1
+
+	; randomise destination a bit
+	and r7, r8, #3
+	add r0, r2, r7
+	subs r0, r0, #1				; dest_x += (rnd & 3)-1
+	movlt r0, #0				; or MOD ScreenWidth
+.endm
+
+.macro PLOT_PIXEL_BIT
+	add r6, r12, r0, lsr #1		; r6 = dest_start + x DIV 2
+
+	ldrb r11, [r6]				; load screen byte
+	tst r0, #1					; odd or even pixel?
+	andeq r11, r11, #0xF0		; mask out left hand pixel
+	orreq r11, r11, r4			; mask in colour as left hand pixel
+	andne r11, r11, #0x0F		; mask out right hand pixel
+	orrne r11, r11, r4, lsl #4	; mask in colour as right hand pixel
+	strb r11, [r6]				; store screen byte
+.endm
+
 ; DOOM FIRE!
 ; R0 = x
 ; R1 = y
@@ -513,71 +537,25 @@ do_fire:
 	ldrb r5, [r10], #1			; load screen byte
 
 	; Left pixel
-	; inline rnd
-	RND
-
-	; read left pixel
 	mov r4, r5, lsr #4			; mask out left hand pixel
 	cmp r4, #0
 	moveq r0, r2
 	beq .3
-
-	; update colour with some randomness
-	and r7, r8, #1				; rnd & 1
-	subs r4, r4, r7				; colour -= rnd & 1
-
-	; randomise destination a bit
-	and r7, r8, #3
-	add r0, r2, r7
-	subs r0, r0, #1				; dest_x += (rnd & 3)-1
-	movlt r0, #0				; or MOD ScreenWidth
-
+	RND
+	DO_RANDOM_BIT
 	.3:
-	; plot dest pixel
-	add r6, r12, r0, lsr #1		; r6 = dest_start + x DIV 2
-
-	ldrb r11, [r6]				; load screen byte
-	tst r0, #1					; odd or even pixel?
-	andeq r11, r11, #0xF0		; mask out left hand pixel
-	orreq r11, r11, r4			; mask in colour as left hand pixel
-	andne r11, r11, #0x0F		; mask out right hand pixel
-	orrne r11, r11, r4, lsl #4	; mask in colour as right hand pixel
-	strb r11, [r6]				; store screen byte
-
+	PLOT_PIXEL_BIT
 	add r2, r2, #1
 
 	; Right pixel
-	; inline rnd
-	RND
-
-	; read right pixel
 	and r4, r5, #0x0F
 	cmp r4, #0
 	moveq r0, r2
 	beq .4
-
-	; update colour with some randomness
-	and r7, r8, #1				; rnd & 1
-	subs r4, r4, r7				; colour -= rnd & 1
-
-	; randomise destination a bit
-	and r7, r8, #3
-	add r0, r2, r7
-	subs r0, r0, #1				; dest_x += (rnd & 3)-1
-	movlt r0, #0				; or MOD ScreenWidth
-
+	RND
+	DO_RANDOM_BIT
 	.4:
-	; plot dest pixel
-	add r6, r12, r0, lsr #1		; r6 = dest_start + x DIV 2
-
-	ldrb r11, [r6]				; load screen byte
-	tst r0, #1					; odd or even pixel?
-	andeq r11, r11, #0xF0		; mask out left hand pixel
-	orreq r11, r11, r4			; mask in colour as left hand pixel
-	andne r11, r11, #0x0F		; mask out right hand pixel
-	orrne r11, r11, r4, lsl #4	; mask in colour as right hand pixel
-	strb r11, [r6]				; store screen byte
-
+	PLOT_PIXEL_BIT
 	add r2, r2, #1
 
 	cmp r2, #Screen_Width
@@ -586,7 +564,7 @@ do_fire:
 	; Next line
 	add r12, r12, #Screen_Stride
 
-	add r3, r3, #1
+	add r3, r3, #1			; could omit this and cmp end of screen buffer instead
 	cmp r3, #Screen_Height	
 	blt .1
 
