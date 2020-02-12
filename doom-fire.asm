@@ -462,13 +462,22 @@ plot_horizontal_line:
 	blt .1
 	ldr pc, [sp], #4
 
+
+.macro RND
+    TST    R9, R9, LSR #1                       ; top bit into Carry
+    MOVS   R11, R8, RRX                         ; 33 bit rotate right
+    ADC    R9, R9, R9                           ; carry into lsb of R1
+    EOR    R11, R11, R8, LSL #12                ; (involved!)
+    EOR    R8, R11, R11, LSR #20                ; (similarly involved!)
+.endm
+
 ; DOOM FIRE!
 ; R0 = x
 ; R1 = y
 ; R2 = x
 ; R3 = y
-; R4 = colour
-; R5 = ?
+; R4 = pixel colour
+; R5 = screen byte
 ; R6 = ptr
 ; R7 = rnd temp
 ; R8 = seed
@@ -492,31 +501,32 @@ do_fire:
 
 	.1:
 	mov r2, #0
-	.2:
-	; inline rnd
-	bl rnd
 
+	.2:
 	; source is contiguous
 	; could read a source word at a time
 	; unroll 8x
 
 	; spread fire
-	mov r0, r2
 
-	; read source pixel
-	add r11, r10, r2, lsr #1	; r11 = source_start + x DIV 2
-	ldrb r4, [r11]				; load screen byte
-	tst r2, #1					; odd or even pixel?
-	andeq r4, r4, #0x0F			; mask out right hand pixel
-	movne r4, r4, lsr #4		; mask out left hand pixel
+	; read source byte
+	ldrb r5, [r10], #1			; load screen byte
+
+	; Left pixel
+	; inline rnd
+	RND
+
+	; read left pixel
+	mov r4, r5, lsr #4			; mask out left hand pixel
 	cmp r4, #0
+	moveq r0, r2
 	beq .3
 
 	; update colour with some randomness
 	and r7, r8, #1				; rnd & 1
 	subs r4, r4, r7				; colour -= rnd & 1
 
-	; randomise destination x a bit
+	; randomise destination a bit
 	and r7, r8, #3
 	add r0, r2, r7
 	subs r0, r0, #1				; dest_x += (rnd & 3)-1
@@ -535,11 +545,45 @@ do_fire:
 	strb r11, [r6]				; store screen byte
 
 	add r2, r2, #1
+
+	; Right pixel
+	; inline rnd
+	RND
+
+	; read right pixel
+	and r4, r5, #0x0F
+	cmp r4, #0
+	moveq r0, r2
+	beq .4
+
+	; update colour with some randomness
+	and r7, r8, #1				; rnd & 1
+	subs r4, r4, r7				; colour -= rnd & 1
+
+	; randomise destination a bit
+	and r7, r8, #3
+	add r0, r2, r7
+	subs r0, r0, #1				; dest_x += (rnd & 3)-1
+	movlt r0, #0				; or MOD ScreenWidth
+
+	.4:
+	; plot dest pixel
+	add r6, r12, r0, lsr #1		; r6 = dest_start + x DIV 2
+
+	ldrb r11, [r6]				; load screen byte
+	tst r0, #1					; odd or even pixel?
+	andeq r11, r11, #0xF0		; mask out left hand pixel
+	orreq r11, r11, r4			; mask in colour as left hand pixel
+	andne r11, r11, #0x0F		; mask out right hand pixel
+	orrne r11, r11, r4, lsl #4	; mask in colour as right hand pixel
+	strb r11, [r6]				; store screen byte
+
+	add r2, r2, #1
+
 	cmp r2, #Screen_Width
 	blt .2
 
 	; Next line
-	add r10, r10, #Screen_Stride
 	add r12, r12, #Screen_Stride
 
 	add r3, r3, #1
@@ -561,9 +605,5 @@ rnd:
 ; All other values produce a maximal length sequence.
 ;
 ; Moved to R11 as temp, R8 as seed and R9 and bit
-    TST    R9, R9, LSR #1                       ; top bit into Carry
-    MOVS   R11, R8, RRX                         ; 33 bit rotate right
-    ADC    R9, R9, R9                           ; carry into lsb of R1
-    EOR    R11, R11, R8, LSL #12                ; (involved!)
-    EOR    R8, R11, R11, LSR #20                ; (similarly involved!)
+	RND
 	mov    pc, lr
