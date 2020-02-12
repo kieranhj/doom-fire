@@ -1,0 +1,1097 @@
+F00:0001       ; STNICCC-Archie
+F00:0002       ; A port of STNICCC-2000 by Oxygene for the Acorn Archimedes series
+F00:0003       ; 
+F00:0004       
+F00:0005       .equ _DEBUG, 1
+F00:0006       
+F00:0007       .equ Screen_Banks, 1
+F00:0008       .equ Screen_Mode, 9
+F00:0009       .equ Screen_Width, 320
+F00:0010       .equ Screen_Height, 256
+F00:0011       .equ Window_Width, 256
+F00:0012       .equ Window_Height, 200
+F00:0013       .equ Screen_Stride, Screen_Width/2		; 4bpp
+F00:0014       .equ Screen_Bytes, Screen_Stride*Screen_Height
+F00:0015       .equ Window_Stride, Screen_Width/2		; 4bpp
+F00:0016       .equ Window_Bytes, Window_Stride*Window_Height
+F00:0017       
+F00:0018       .include "swis.h.asm"
+F01:0001       .equ OS_WriteC, 0
+F01:0002       .equ OS_WriteO, 2
+F01:0003       .equ OS_NewLine, 3
+F01:0004       .equ OS_Byte, 6
+F01:0005       .equ XOS_Byte, OS_Byte | (1 << 17)
+F01:0006       .equ OS_Word, 7
+F01:0007       .equ OS_File, 8
+F01:0008       .equ OS_Exit, 0x11
+F01:0009       .equ OS_BreakPt, 0x17
+F01:0010       .equ OS_ChangeDynamicArea, 0x2a
+F01:0011       .equ OS_GenerateError, 0x2b
+F01:0012       .equ OS_ReadVduVariables, 0x31
+F01:0013       .equ OS_ReadMonotonicTime, 0x42
+F01:0014       .equ OS_ReadDynamicArea, 0x5c
+F01:0015       .equ OS_ConvertCardinal4, 0xd8	
+F01:0016       
+F01:0017       .equ OSByte_EventEnable, 14
+F01:0018       .equ OSByte_EventDisable, 13
+F01:0019       .equ OSByte_Vsync, 19
+F01:0020       .equ OSByte_WriteVDUBank, 112
+F01:0021       .equ OSByte_WriteDisplayBank, 113
+F01:0022       .equ OSByte_ReadKey, 129
+F01:0023       
+F01:0024       .equ OSWord_WritePalette, 12
+F01:0025       
+F01:0026       .equ IKey_LeftClick, 0xf6
+F01:0027       .equ IKey_RightClick, 0xf4
+F01:0028       .equ IKey_Space, 0x9d
+F01:0029       
+F01:0030       .equ DynArea_Screen, 2
+F01:0031       
+F01:0032       .equ VD_ScreenStart, 148 
+F01:0033       
+F01:0034       .equ OS_Claim, 0x1f
+F01:0035       .equ OS_Release, 0x20
+F01:0036       .equ OS_AddToVector, 0x47
+F01:0037       
+F01:0038       .equ ErrorV, 0x01
+F01:0039       .equ EventV, 0x10
+F01:0040       .equ Event_VSync, 4
+F01:0041       
+F01:0042       .equ OS_ConvertHex2, 0xd1
+F01:0043       .equ OS_ConvertHex4, 0xd2
+F01:0044       .equ OS_ConvertHex8, 0xd4
+F01:0045       
+F01:0046       .equ QTM_Load, 0x47E40
+F01:0047       .equ QTM_Start, 0x47E41
+F01:0048       .equ QTM_Stop, 0x47E42
+F01:0049       .equ QTM_SetSampleSpeed, 0x47E49
+F01:0050       
+F00:0019       
+F00:0020       .org 0x8000
+F00:0021       
+F00:0022       Start:
+F00:0023           adr sp, stack_base
+               S01:00008000:  01 DB 8F E2
+F00:0024       	B main
+               S01:00008004:  00 01 00 EA
+F00:0025       
+F00:0026       .skip 1024
+F00:0027       stack_base:
+F00:0028       
+F00:0029       scr_bank:
+F00:0030       	.long 0
+               S01:00008408:  00 00 00 00
+F00:0031       
+F00:0032       main:
+F00:0033       	MOV r0,#22	;Set MODE
+               S01:0000840C:  16 00 A0 E3
+F00:0034       	SWI OS_WriteC
+               S01:00008410:  00 00 00 EF
+F00:0035       	MOV r0,#Screen_Mode
+               S01:00008414:  09 00 A0 E3
+F00:0036       	SWI OS_WriteC
+               S01:00008418:  00 00 00 EF
+F00:0037       
+F00:0038       	; Set screen size for number of buffers
+F00:0039       	MOV r0, #DynArea_Screen
+               S01:0000841C:  02 00 A0 E3
+F00:0040       	SWI OS_ReadDynamicArea
+               S01:00008420:  5C 00 00 EF
+F00:0041       	MOV r0, #DynArea_Screen
+               S01:00008424:  02 00 A0 E3
+F00:0042       	MOV r2, #Screen_Bytes * Screen_Banks
+               S01:00008428:  0A 2A A0 E3
+F00:0043       	SUBS r1, r2, r1
+               S01:0000842C:  01 10 52 E0
+F00:0044       	SWI OS_ChangeDynamicArea
+               S01:00008430:  2A 00 00 EF
+F00:0045       	MOV r0, #DynArea_Screen
+               S01:00008434:  02 00 A0 E3
+F00:0046       	SWI OS_ReadDynamicArea
+               S01:00008438:  5C 00 00 EF
+F00:0047       	CMP r1, #Screen_Bytes * Screen_Banks
+               S01:0000843C:  0A 0A 51 E3
+F00:0048       	ADRCC r0, error_noscreenmem
+               S01:00008440:  41 0F 8F 32
+F00:0049       	SWICC OS_GenerateError
+               S01:00008444:  2B 00 00 3F
+F00:0050       
+F00:0051       	MOV r0,#23	;Disable cursor
+               S01:00008448:  17 00 A0 E3
+F00:0052       	SWI OS_WriteC
+               S01:0000844C:  00 00 00 EF
+F00:0053       	MOV r0,#1
+               S01:00008450:  01 00 A0 E3
+F00:0054       	SWI OS_WriteC
+               S01:00008454:  00 00 00 EF
+F00:0055       	MOV r0,#0
+               S01:00008458:  00 00 A0 E3
+F00:0056       	SWI OS_WriteC
+               S01:0000845C:  00 00 00 EF
+F00:0057       	SWI OS_WriteC
+               S01:00008460:  00 00 00 EF
+F00:0058       	SWI OS_WriteC
+               S01:00008464:  00 00 00 EF
+F00:0059       	SWI OS_WriteC
+               S01:00008468:  00 00 00 EF
+F00:0060       	SWI OS_WriteC
+               S01:0000846C:  00 00 00 EF
+F00:0061       	SWI OS_WriteC
+               S01:00008470:  00 00 00 EF
+F00:0062       	SWI OS_WriteC
+               S01:00008474:  00 00 00 EF
+F00:0063       	SWI OS_WriteC
+               S01:00008478:  00 00 00 EF
+F00:0064       
+F00:0065       	; Set palette
+F00:0066       	bl set_palette
+               S01:0000847C:  96 00 00 EB
+F00:0067       
+F00:0068       	; Clear all screen buffers
+F00:0069       	mov r1, #1
+               S01:00008480:  01 10 A0 E3
+F00:0070       .1:
+F00:0071       	str r1, scr_bank
+               S01:00008484:  84 10 0F E5
+F00:0072       
+F00:0073       	; CLS bank N
+F00:0074       	mov r0, #OSByte_WriteVDUBank
+               S01:00008488:  70 00 A0 E3
+F00:0075       	swi OS_Byte
+               S01:0000848C:  06 00 00 EF
+F00:0076       	mov r0, #12
+               S01:00008490:  0C 00 A0 E3
+F00:0077       	SWI OS_WriteC
+               S01:00008494:  00 00 00 EF
+F00:0078       
+F00:0079       	ldr r1, scr_bank
+               S01:00008498:  98 10 1F E5
+F00:0080       	add r1, r1, #1
+               S01:0000849C:  01 10 81 E2
+F00:0081       	cmp r1, #Screen_Banks
+               S01:000084A0:  01 00 51 E3
+F00:0082       	ble .1
+               S01:000084A4:  F6 FF FF DA
+F00:0083       
+F00:0084       	; Start with bank 1
+F00:0085       	mov r1, #1
+               S01:000084A8:  01 10 A0 E3
+F00:0086       	str r1, scr_bank
+               S01:000084AC:  AC 10 0F E5
+F00:0087       	
+F00:0088       	; Claim the Error vector
+F00:0089       	MOV r0, #ErrorV
+               S01:000084B0:  01 00 A0 E3
+F00:0090       	ADR r1, error_handler
+               S01:000084B4:  77 1F 8F E2
+F00:0091       	MOV r2, #0
+               S01:000084B8:  00 20 A0 E3
+F00:0092       	SWI OS_Claim
+               S01:000084BC:  1F 00 00 EF
+F00:0093       
+F00:0094       	; Claim the Event vector
+F00:0095       	mov r0, #EventV
+               S01:000084C0:  10 00 A0 E3
+F00:0096       	adr r1, event_handler
+               S01:000084C4:  69 1F 8F E2
+F00:0097       	mov r2, #0
+               S01:000084C8:  00 20 A0 E3
+F00:0098       	swi OS_AddToVector
+               S01:000084CC:  47 00 00 EF
+F00:0099       
+F00:0100       	; Late system init here
+F00:0101       	bl get_screen_addr
+               S01:000084D0:  4B 00 00 EB
+F00:0102       	ldr r12, screen_addr
+               S01:000084D4:  44 C1 9F E5
+F00:0103       
+F00:0104       	mov r4, #15
+               S01:000084D8:  0F 40 A0 E3
+F00:0105       	mov r1, #Screen_Height-1
+               S01:000084DC:  FF 10 A0 E3
+F00:0106       	bl plot_horizontal_line
+               S01:000084E0:  C4 00 00 EB
+F00:0107       
+F00:0108       	; Enable Vsync event
+F00:0109       	mov r0, #OSByte_EventEnable
+               S01:000084E4:  0E 00 A0 E3
+F00:0110       	mov r1, #Event_VSync
+               S01:000084E8:  04 10 A0 E3
+F00:0111       	SWI OS_Byte
+               S01:000084EC:  06 00 00 EF
+F00:0112       
+F00:0113       main_loop:   
+F00:0114       	; debug
+F00:0115       	bl debug_write_vsync_count
+               S01:000084F0:  1F 00 00 EB
+F00:0116       
+F00:0117       	; Block if we've not even had a vsync since last time - we're >50Hz!
+F00:0118       .if Screen_Banks > 2
+F00:0119       	ldr r1, last_vsync
+F00:0120       .1:
+F00:0121       	ldr r2, vsync_count
+F00:0122       	cmp r1, r2
+F00:0123       	beq .1
+F00:0124       	str r2, last_vsync
+F00:0125       
+F00:0126       	; Swap banks
+F00:0127       	; Display whichever bank we've just written to
+F00:0128       	ldr r1, scr_bank			; bank we want to display next
+F00:0129       	str r1, buffer_pending		; we might overwrite a bank if too fast (drop a frame?)
+F00:0130       	; If we have more than 3 banks then this needs to be a queue
+F00:0131       	; This now happens in vsync event handler
+F00:0132       .else
+F00:0133       	mov r0, #OSByte_WriteDisplayBank
+               S01:000084F4:  71 00 A0 E3
+F00:0134       	swi OS_Byte
+               S01:000084F8:  06 00 00 EF
+F00:0135       .endif
+F00:0136       
+F00:0137       	; Increment to next bank for writing
+F00:0138       	ldr r1, scr_bank
+               S01:000084FC:  FC 10 1F E5
+F00:0139       	add r1, r1, #1
+               S01:00008500:  01 10 81 E2
+F00:0140       	cmp r1, #Screen_Banks
+               S01:00008504:  01 00 51 E3
+F00:0141       	movgt r1, #1
+               S01:00008508:  01 10 A0 C3
+F00:0142       	str r1, scr_bank
+               S01:0000850C:  0C 11 0F E5
+F00:0143       
+F00:0144       	; Now set the screen bank to write to
+F00:0145       	mov r0, #OSByte_WriteVDUBank
+               S01:00008510:  70 00 A0 E3
+F00:0146       	swi OS_Byte
+               S01:00008514:  06 00 00 EF
+F00:0147       
+F00:0148       	; Wait for vsync if double buffering
+F00:0149       	.if Screen_Banks <= 2
+F00:0150       	mov r0, #OSByte_Vsync
+               S01:00008518:  13 00 A0 E3
+F00:0151       	swi OS_Byte
+               S01:0000851C:  06 00 00 EF
+F00:0152       	.endif
+F00:0153       
+F00:0154       	; Back buffer address for writing bank stored at screen_addr
+F00:0155       	bl get_screen_addr
+               S01:00008520:  37 00 00 EB
+F00:0156       	ldr r12, screen_addr
+               S01:00008524:  F4 C0 9F E5
+F00:0157       
+F00:0158       	;Do stuff here!
+F00:0159       	bl do_fire
+               S01:00008528:  B9 00 00 EB
+F00:0160       
+F00:0161       	;Exit if SPACE is pressed
+F00:0162       	MOV r0, #OSByte_ReadKey
+               S01:0000852C:  81 00 A0 E3
+F00:0163       	MOV r1, #IKey_Space
+               S01:00008530:  9D 10 A0 E3
+F00:0164       	MOV r2, #0xff
+               S01:00008534:  FF 20 A0 E3
+F00:0165       	SWI OS_Byte
+               S01:00008538:  06 00 00 EF
+F00:0166       	
+F00:0167       	CMP r1, #0xff
+               S01:0000853C:  FF 00 51 E3
+F00:0168       	CMPEQ r2, #0xff
+               S01:00008540:  FF 00 52 03
+F00:0169       	BEQ exit
+               S01:00008544:  36 00 00 0A
+F00:0170       	
+F00:0171       	B main_loop
+               S01:00008548:  E8 FF FF EA
+F00:0172       
+F00:0173       wtaf_pad:
+F00:0174       	.skip 0
+F00:0175       
+F00:0176       error_noscreenmem:
+F00:0177       	.long 0
+               S01:0000854C:  00 00 00 00
+F00:0178       	.byte "Cannot allocate screen memory!"
+               S01:00008550:  43 61 6E 6E 6F 74 20 61 6C 6C 6F 63 61 74 65 20
+               S01:00008560:  73 63 72 65 65 6E 20 6D 65 6D 6F 72 79 21
+F00:0179       	.p2align 2
+F00:0180       	.long 0
+               S01:00008570:  00 00 00 00
+F00:0181       
+F00:0182       .if _DEBUG
+F00:0183       debug_write_vsync_count:
+F00:0184       	mov r0, #30
+               S01:00008574:  1E 00 A0 E3
+F00:0185       	swi OS_WriteC
+               S01:00008578:  00 00 00 EF
+F00:0186       
+F00:0187       	ldr r0, vsync_count
+               S01:0000857C:  08 01 9F E5
+F00:0188       	adr r1, debug_string
+               S01:00008580:  70 10 8F E2
+F00:0189       	mov r2, #8
+               S01:00008584:  08 20 A0 E3
+F00:0190       	swi OS_ConvertHex4
+               S01:00008588:  D2 00 00 EF
+F00:0191       
+F00:0192       	adr r0, debug_string
+               S01:0000858C:  64 00 8F E2
+F00:0193       	swi OS_WriteO
+               S01:00008590:  02 00 00 EF
+F00:0194       
+F00:0195       	mov pc, r14
+               S01:00008594:  0E F0 A0 E1
+F00:0196       
+F00:0197       debug_write_r0:
+F00:0198       	adr r1, debug_string
+               S01:00008598:  58 10 8F E2
+F00:0199       	mov r2, #8
+               S01:0000859C:  08 20 A0 E3
+F00:0200       	swi OS_ConvertHex2
+               S01:000085A0:  D1 00 00 EF
+F00:0201       	adr r0, debug_string
+               S01:000085A4:  4C 00 8F E2
+F00:0202       	swi OS_WriteO
+               S01:000085A8:  02 00 00 EF
+F00:0203       	mov r0, #32
+               S01:000085AC:  20 00 A0 E3
+F00:0204       	swi OS_WriteC
+               S01:000085B0:  00 00 00 EF
+F00:0205       	mov pc, r14
+               S01:000085B4:  0E F0 A0 E1
+F00:0206       
+F00:0207       debug_write_16:
+F00:0208       	adr r1, debug_string
+               S01:000085B8:  38 10 8F E2
+F00:0209       	mov r2, #8
+               S01:000085BC:  08 20 A0 E3
+F00:0210       	swi OS_ConvertHex4
+               S01:000085C0:  D2 00 00 EF
+F00:0211       	adr r0, debug_string
+               S01:000085C4:  2C 00 8F E2
+F00:0212       	swi OS_WriteO
+               S01:000085C8:  02 00 00 EF
+F00:0213       	mov r0, #32
+               S01:000085CC:  20 00 A0 E3
+F00:0214       	swi OS_WriteC
+               S01:000085D0:  00 00 00 EF
+F00:0215       	mov pc, r14
+               S01:000085D4:  0E F0 A0 E1
+F00:0216       
+F00:0217       debug_write_32:
+F00:0218       	adr r1, debug_string
+               S01:000085D8:  18 10 8F E2
+F00:0219       	mov r2, #12
+               S01:000085DC:  0C 20 A0 E3
+F00:0220       	swi OS_ConvertHex8
+               S01:000085E0:  D4 00 00 EF
+F00:0221       	adr r0, debug_string
+               S01:000085E4:  0C 00 8F E2
+F00:0222       	swi OS_WriteO
+               S01:000085E8:  02 00 00 EF
+F00:0223       	mov r0, #32
+               S01:000085EC:  20 00 A0 E3
+F00:0224       	swi OS_WriteC
+               S01:000085F0:  00 00 00 EF
+F00:0225       	mov pc, r14
+               S01:000085F4:  0E F0 A0 E1
+F00:0226       
+F00:0227       debug_string:
+F00:0228       	.skip 12
+F00:0229       .endif
+F00:0230       
+F00:0231       get_screen_addr:
+F00:0232       	str lr, [sp, #-4]!
+               S01:00008604:  04 E0 2D E5
+F00:0233       	adr r0, screen_addr_input
+               S01:00008608:  08 00 8F E2
+F00:0234       	adr r1, screen_addr
+               S01:0000860C:  0C 10 8F E2
+F00:0235       	swi OS_ReadVduVariables
+               S01:00008610:  31 00 00 EF
+F00:0236       	ldr pc, [sp], #4
+               S01:00008614:  04 F0 9D E4
+F00:0237       	
+F00:0238       screen_addr_input:
+F00:0239       	.long VD_ScreenStart, -1
+               S01:00008618:  94 00 00 00
+               S01:0000861C:  FF FF FF FF
+F00:0240       screen_addr:
+F00:0241       	.long 0
+               S01:00008620:  00 00 00 00
+F00:0242       
+F00:0243       exit:	
+F00:0244       	; wait for vsync (any pending buffers)
+F00:0245       	mov r0, #19
+               S01:00008624:  13 00 A0 E3
+F00:0246       	swi OS_Byte
+               S01:00008628:  06 00 00 EF
+F00:0247       
+F00:0248       	; disable vsync event
+F00:0249       	mov r0, #OSByte_EventDisable
+               S01:0000862C:  0D 00 A0 E3
+F00:0250       	mov r1, #Event_VSync
+               S01:00008630:  04 10 A0 E3
+F00:0251       	swi OS_Byte
+               S01:00008634:  06 00 00 EF
+F00:0252       
+F00:0253       	; release our event handler
+F00:0254       	mov r0, #EventV
+               S01:00008638:  10 00 A0 E3
+F00:0255       	adr r1, event_handler
+               S01:0000863C:  2C 10 8F E2
+F00:0256       	mov r2, #0
+               S01:00008640:  00 20 A0 E3
+F00:0257       	swi OS_Release
+               S01:00008644:  20 00 00 EF
+F00:0258       
+F00:0259       	; release our error handler
+F00:0260       	mov r0, #ErrorV
+               S01:00008648:  01 00 A0 E3
+F00:0261       	adr r1, error_handler
+               S01:0000864C:  44 10 8F E2
+F00:0262       
+F00:0263       	; Display whichever bank we've just written to
+F00:0264       	mov r0, #OSByte_WriteDisplayBank
+               S01:00008650:  71 00 A0 E3
+F00:0265       	ldr r1, scr_bank
+               S01:00008654:  54 12 1F E5
+F00:0266       	swi OS_Byte
+               S01:00008658:  06 00 00 EF
+F00:0267       	; and write to it
+F00:0268       	mov r0, #OSByte_WriteVDUBank
+               S01:0000865C:  70 00 A0 E3
+F00:0269       	ldr r1, scr_bank
+               S01:00008660:  60 12 1F E5
+F00:0270       	swi OS_Byte
+               S01:00008664:  06 00 00 EF
+F00:0271       
+F00:0272       	; Show our final frame count
+F00:0273       	bl debug_write_vsync_count
+               S01:00008668:  C1 FF FF EB
+F00:0274       
+F00:0275       	SWI OS_Exit
+               S01:0000866C:  11 00 00 EF
+F00:0276       
+F00:0277       ; R0=event number
+F00:0278       event_handler:
+F00:0279       	cmp r0, #Event_VSync
+               S01:00008670:  04 00 50 E3
+F00:0280       	movnes pc, r14
+               S01:00008674:  0E F0 B0 11
+F00:0281       
+F00:0282       	STMDB sp!, {r0-r1, lr}
+               S01:00008678:  03 40 2D E9
+F00:0283       
+F00:0284       	; update the vsync counter
+F00:0285       	LDR r0, vsync_count
+               S01:0000867C:  08 00 9F E5
+F00:0286       	ADD r0, r0, #1
+               S01:00008680:  01 00 80 E2
+F00:0287       	STR r0, vsync_count
+               S01:00008684:  00 00 8F E5
+F00:0288       
+F00:0289       .if Screen_Banks > 2
+F00:0290       	; is there a new screen buffer ready to display?
+F00:0291       	LDR r1, buffer_pending
+F00:0292       	CMP r1, #0
+F00:0293       	LDMEQIA sp!, {r0-r1, pc}
+F00:0294       
+F00:0295       	; set the display buffer
+F00:0296       	MOV r0, #0
+F00:0297       	STR r0, buffer_pending
+F00:0298       	MOV r0, #OSByte_WriteDisplayBank
+F00:0299       
+F00:0300       	; some SVC stuff I don't understand :)
+F00:0301       	STMDB sp!, {r2-r12}
+F00:0302       	MOV r9, pc     ;Save old mode
+F00:0303       	ORR r8, r9, #3 ;SVC mode
+F00:0304       	TEQP r8, #0
+F00:0305       	MOV r0,r0
+F00:0306       	STR lr, [sp, #-4]!
+F00:0307       	SWI XOS_Byte
+F00:0308       	LDR lr, [sp], #4
+F00:0309       	TEQP r9, #0    ;Restore old mode
+F00:0310       	MOV r0, r0
+F00:0311       	LDMIA sp!, {r2-r12}
+F00:0312       .endif
+F00:0313       
+F00:0314       	LDMIA sp!, {r0-r1, pc}
+               S01:00008688:  03 80 BD E8
+F00:0315       
+F00:0316       vsync_count:
+F00:0317       	.long 0
+               S01:0000868C:  00 00 00 00
+F00:0318       
+F00:0319       last_vsync:
+F00:0320       	.long -1
+               S01:00008690:  FF FF FF FF
+F00:0321       
+F00:0322       buffer_pending:
+F00:0323       	.long 0
+               S01:00008694:  00 00 00 00
+F00:0324       
+F00:0325       error_handler:
+F00:0326       	STMDB sp!, {r0-r2, lr}
+               S01:00008698:  07 40 2D E9
+F00:0327       	MOV r0, #OSByte_EventDisable
+               S01:0000869C:  0D 00 A0 E3
+F00:0328       	MOV r1, #Event_VSync
+               S01:000086A0:  04 10 A0 E3
+F00:0329       	SWI OS_Byte
+               S01:000086A4:  06 00 00 EF
+F00:0330       	MOV r0, #EventV
+               S01:000086A8:  10 00 A0 E3
+F00:0331       	ADR r1, event_handler
+               S01:000086AC:  44 10 4F E2
+F00:0332       	mov r2, #0
+               S01:000086B0:  00 20 A0 E3
+F00:0333       	SWI OS_Release
+               S01:000086B4:  20 00 00 EF
+F00:0334       	MOV r0, #ErrorV
+               S01:000086B8:  01 00 A0 E3
+F00:0335       	ADR r1, error_handler
+               S01:000086BC:  2C 10 4F E2
+F00:0336       	MOV r2, #0
+               S01:000086C0:  00 20 A0 E3
+F00:0337       	SWI OS_Release
+               S01:000086C4:  20 00 00 EF
+F00:0338       	MOV r0, #OSByte_WriteDisplayBank
+               S01:000086C8:  71 00 A0 E3
+F00:0339       	LDR r1, scr_bank
+               S01:000086CC:  CC 12 1F E5
+F00:0340       	SWI OS_Byte
+               S01:000086D0:  06 00 00 EF
+F00:0341       	LDMIA sp!, {r0-r2, lr}
+               S01:000086D4:  07 40 BD E8
+F00:0342       	MOVS pc, lr
+               S01:000086D8:  0E F0 B0 E1
+F00:0343       
+F00:0344       set_palette:
+F00:0345       	str lr, [sp, #-4]!
+               S01:000086DC:  04 E0 2D E5
+F00:0346       	mov r0, #12
+               S01:000086E0:  0C 00 A0 E3
+F00:0347       	adr r1, palette_data
+               S01:000086E4:  14 10 8F E2
+F00:0348       	add r2, r1, #16*5
+               S01:000086E8:  50 20 81 E2
+F00:0349       
+F00:0350       	.1:
+F00:0351       	swi OS_Word
+               S01:000086EC:  07 00 00 EF
+F00:0352       	add r1, r1, #5
+               S01:000086F0:  05 10 81 E2
+F00:0353       	cmp r1, r2
+               S01:000086F4:  02 00 51 E1
+F00:0354       	blt .1
+               S01:000086F8:  FB FF FF BA
+F00:0355       
+F00:0356       	ldr pc, [sp], #4
+               S01:000086FC:  04 F0 9D E4
+F00:0357       
+F00:0358       .macro COLOUR l, r, g, b
+F00:0360       
+F00:0361       
+F00:0362       .macro COLOUR_LERP l, r1, g1, b1, delta, r2, g2, b2
+F00:0367       
+F00:0368       
+F00:0369       palette_data:
+F00:0370       	; logical colour, physical colour, red, green, blue
+F00:0371       	COLOUR 		0, 0, 0, 0					; black
+F02:0001       	.byte 0, 16, 0 * 16, 0 * 255, 0 * 255 
+               S01:00008700:  00
+               S01:00008701:  10
+               S01:00008702:  00
+               S01:00008703:  00
+               S01:00008704:  00
+F00:0372       	COLOUR_LERP 1, 0, 0, 0, 0.20, 1, 0, 0	; black->red
+F03:0001       	.byte 1, 16
+               S01:00008705:  01
+               S01:00008706:  10
+F03:0002       	.byte 0 * 255 + (1-0) * 0.20 * 255
+               S01:00008707:  33
+F03:0003       	.byte 0 * 255 + (0-0) * 0.20 * 255
+               S01:00008708:  00
+F03:0004       	.byte 0 * 255 + (0-0) * 0.20 * 255
+               S01:00008709:  00
+F00:0373       	COLOUR_LERP 2, 0, 0, 0, 0.40, 1, 0, 0	; black->red
+F04:0001       	.byte 2, 16
+               S01:0000870A:  02
+               S01:0000870B:  10
+F04:0002       	.byte 0 * 255 + (1-0) * 0.40 * 255
+               S01:0000870C:  66
+F04:0003       	.byte 0 * 255 + (0-0) * 0.40 * 255
+               S01:0000870D:  00
+F04:0004       	.byte 0 * 255 + (0-0) * 0.40 * 255
+               S01:0000870E:  00
+F00:0374       	COLOUR_LERP 3, 0, 0, 0, 0.60, 1, 0, 0	; black->red
+F05:0001       	.byte 3, 16
+               S01:0000870F:  03
+               S01:00008710:  10
+F05:0002       	.byte 0 * 255 + (1-0) * 0.60 * 255
+               S01:00008711:  99
+F05:0003       	.byte 0 * 255 + (0-0) * 0.60 * 255
+               S01:00008712:  00
+F05:0004       	.byte 0 * 255 + (0-0) * 0.60 * 255
+               S01:00008713:  00
+F00:0375       	COLOUR_LERP 4, 0, 0, 0, 0.80, 1, 0, 0	; black->red
+F06:0001       	.byte 4, 16
+               S01:00008714:  04
+               S01:00008715:  10
+F06:0002       	.byte 0 * 255 + (1-0) * 0.80 * 255
+               S01:00008716:  CC
+F06:0003       	.byte 0 * 255 + (0-0) * 0.80 * 255
+               S01:00008717:  00
+F06:0004       	.byte 0 * 255 + (0-0) * 0.80 * 255
+               S01:00008718:  00
+F00:0376       	COLOUR_LERP 5, 0, 0, 0, 1.00, 1, 0, 0	; red
+F07:0001       	.byte 5, 16
+               S01:00008719:  05
+               S01:0000871A:  10
+F07:0002       	.byte 0 * 255 + (1-0) * 1.00 * 255
+               S01:0000871B:  FF
+F07:0003       	.byte 0 * 255 + (0-0) * 1.00 * 255
+               S01:0000871C:  00
+F07:0004       	.byte 0 * 255 + (0-0) * 1.00 * 255
+               S01:0000871D:  00
+F00:0377       
+F00:0378       	COLOUR_LERP 6, 1, 0, 0, 0.20, 1, 1, 0	; red->yellow
+F08:0001       	.byte 6, 16
+               S01:0000871E:  06
+               S01:0000871F:  10
+F08:0002       	.byte 1 * 255 + (1-1) * 0.20 * 255
+               S01:00008720:  FF
+F08:0003       	.byte 0 * 255 + (1-0) * 0.20 * 255
+               S01:00008721:  33
+F08:0004       	.byte 0 * 255 + (0-0) * 0.20 * 255
+               S01:00008722:  00
+F00:0379       	COLOUR_LERP 7, 1, 0, 0, 0.40, 1, 1, 0	; red->yellow
+F09:0001       	.byte 7, 16
+               S01:00008723:  07
+               S01:00008724:  10
+F09:0002       	.byte 1 * 255 + (1-1) * 0.40 * 255
+               S01:00008725:  FF
+F09:0003       	.byte 0 * 255 + (1-0) * 0.40 * 255
+               S01:00008726:  66
+F09:0004       	.byte 0 * 255 + (0-0) * 0.40 * 255
+               S01:00008727:  00
+F00:0380       	COLOUR_LERP 8, 1, 0, 0, 0.60, 1, 1, 0	; red->yellow
+F10:0001       	.byte 8, 16
+               S01:00008728:  08
+               S01:00008729:  10
+F10:0002       	.byte 1 * 255 + (1-1) * 0.60 * 255
+               S01:0000872A:  FF
+F10:0003       	.byte 0 * 255 + (1-0) * 0.60 * 255
+               S01:0000872B:  99
+F10:0004       	.byte 0 * 255 + (0-0) * 0.60 * 255
+               S01:0000872C:  00
+F00:0381       	COLOUR_LERP 9, 1, 0, 0, 0.80, 1, 1, 0	; red->yellow
+F11:0001       	.byte 9, 16
+               S01:0000872D:  09
+               S01:0000872E:  10
+F11:0002       	.byte 1 * 255 + (1-1) * 0.80 * 255
+               S01:0000872F:  FF
+F11:0003       	.byte 0 * 255 + (1-0) * 0.80 * 255
+               S01:00008730:  CC
+F11:0004       	.byte 0 * 255 + (0-0) * 0.80 * 255
+               S01:00008731:  00
+F00:0382       	COLOUR_LERP 10, 1, 0, 0, 1.00, 1, 1, 0	; yellow
+F12:0001       	.byte 10, 16
+               S01:00008732:  0A
+               S01:00008733:  10
+F12:0002       	.byte 1 * 255 + (1-1) * 1.00 * 255
+               S01:00008734:  FF
+F12:0003       	.byte 0 * 255 + (1-0) * 1.00 * 255
+               S01:00008735:  FF
+F12:0004       	.byte 0 * 255 + (0-0) * 1.00 * 255
+               S01:00008736:  00
+F00:0383       
+F00:0384       	COLOUR_LERP 11, 1, 1, 0, 0.20, 1, 1, 1	; yellow->white
+F13:0001       	.byte 11, 16
+               S01:00008737:  0B
+               S01:00008738:  10
+F13:0002       	.byte 1 * 255 + (1-1) * 0.20 * 255
+               S01:00008739:  FF
+F13:0003       	.byte 1 * 255 + (1-1) * 0.20 * 255
+               S01:0000873A:  FF
+F13:0004       	.byte 0 * 255 + (1-0) * 0.20 * 255
+               S01:0000873B:  33
+F00:0385       	COLOUR_LERP 12, 1, 1, 0, 0.40, 1, 1, 1	; yellow->white
+F14:0001       	.byte 12, 16
+               S01:0000873C:  0C
+               S01:0000873D:  10
+F14:0002       	.byte 1 * 255 + (1-1) * 0.40 * 255
+               S01:0000873E:  FF
+F14:0003       	.byte 1 * 255 + (1-1) * 0.40 * 255
+               S01:0000873F:  FF
+F14:0004       	.byte 0 * 255 + (1-0) * 0.40 * 255
+               S01:00008740:  66
+F00:0386       	COLOUR_LERP 13, 1, 1, 0, 0.60, 1, 1, 1	; yellow->white
+F15:0001       	.byte 13, 16
+               S01:00008741:  0D
+               S01:00008742:  10
+F15:0002       	.byte 1 * 255 + (1-1) * 0.60 * 255
+               S01:00008743:  FF
+F15:0003       	.byte 1 * 255 + (1-1) * 0.60 * 255
+               S01:00008744:  FF
+F15:0004       	.byte 0 * 255 + (1-0) * 0.60 * 255
+               S01:00008745:  99
+F00:0387       	COLOUR_LERP 14, 1, 1, 0, 0.80, 1, 1, 1	; yellow->white
+F16:0001       	.byte 14, 16
+               S01:00008746:  0E
+               S01:00008747:  10
+F16:0002       	.byte 1 * 255 + (1-1) * 0.80 * 255
+               S01:00008748:  FF
+F16:0003       	.byte 1 * 255 + (1-1) * 0.80 * 255
+               S01:00008749:  FF
+F16:0004       	.byte 0 * 255 + (1-0) * 0.80 * 255
+               S01:0000874A:  CC
+F00:0388       	COLOUR_LERP 15, 1, 1, 0, 1.00, 1, 1, 1	; white
+F17:0001       	.byte 15, 16
+               S01:0000874B:  0F
+               S01:0000874C:  10
+F17:0002       	.byte 1 * 255 + (1-1) * 1.00 * 255
+               S01:0000874D:  FF
+F17:0003       	.byte 1 * 255 + (1-1) * 1.00 * 255
+               S01:0000874E:  FF
+F17:0004       	.byte 0 * 255 + (1-0) * 1.00 * 255
+               S01:0000874F:  FF
+F00:0389       	.p2align 2
+F00:0390       
+F00:0391       ; R12=screen_addr, trashes r7, r8, r9
+F00:0392       window_cls:
+F00:0393       	ldr r8, screen_addr
+               S01:00008750:  38 81 1F E5
+F00:0394       	add r9, r8, #Window_Bytes
+               S01:00008754:  7D 9C 88 E2
+F00:0395       
+F00:0396       	mov r0, #0
+               S01:00008758:  00 00 A0 E3
+F00:0397       	mov r1, #0
+               S01:0000875C:  00 10 A0 E3
+F00:0398       	mov r2, #0
+               S01:00008760:  00 20 A0 E3
+F00:0399       	mov r3, #0
+               S01:00008764:  00 30 A0 E3
+F00:0400       	mov r4, #0
+               S01:00008768:  00 40 A0 E3
+F00:0401       	mov r5, #0
+               S01:0000876C:  00 50 A0 E3
+F00:0402       	mov r6, #0
+               S01:00008770:  00 60 A0 E3
+F00:0403       	mov r7, #0
+               S01:00008774:  00 70 A0 E3
+F00:0404       .1:
+F00:0405       	stmia r8!, {r0-r7}
+               S01:00008778:  FF 00 A8 E8
+F00:0406       	stmia r8!, {r0-r7}
+               S01:0000877C:  FF 00 A8 E8
+F00:0407       	stmia r8!, {r0-r7}
+               S01:00008780:  FF 00 A8 E8
+F00:0408       	stmia r8!, {r0-r7}
+               S01:00008784:  FF 00 A8 E8
+F00:0409       	add r8, r8, #32
+               S01:00008788:  20 80 88 E2
+F00:0410       	stmia r8!, {r0-r7}
+               S01:0000878C:  FF 00 A8 E8
+F00:0411       	stmia r8!, {r0-r7}
+               S01:00008790:  FF 00 A8 E8
+F00:0412       	stmia r8!, {r0-r7}
+               S01:00008794:  FF 00 A8 E8
+F00:0413       	stmia r8!, {r0-r7}
+               S01:00008798:  FF 00 A8 E8
+F00:0414       	add r8, r8, #32
+               S01:0000879C:  20 80 88 E2
+F00:0415       	cmp r8, r9
+               S01:000087A0:  09 00 58 E1
+F00:0416       	blt .1
+               S01:000087A4:  F3 FF FF BA
+F00:0417       
+F00:0418       	mov pc, lr
+               S01:000087A8:  0E F0 A0 E1
+F00:0419       
+F00:0420       ; R0=x, R1=y, R4=colour, R12=screen_addr, trashes r10, r11
+F00:0421       plot_pixel:
+F00:0422       	; ptr = screen_addr + starty * screen_stride + startx DIV 2
+F00:0423       	add r10, r12, r1, lsl #7	; r10 = screen_addr + starty * 128
+               S01:000087AC:  81 A3 8C E0
+F00:0424       	add r10, r10, r1, lsl #5	; r10 += starty * 32 = starty * 160
+               S01:000087B0:  81 A2 8A E0
+F00:0425       	add r10, r10, r0, lsr #1	; r10 += startx DIV 2
+               S01:000087B4:  A0 A0 8A E0
+F00:0426       
+F00:0427       	ldrb r11, [r10]				; load screen byte
+               S01:000087B8:  00 B0 DA E5
+F00:0428       
+F00:0429       	tst r0, #1					; odd or even pixel?
+               S01:000087BC:  01 00 10 E3
+F00:0430       	andeq r11, r11, #0xF0		; mask out left hand pixel
+               S01:000087C0:  F0 B0 0B 02
+F00:0431       	orreq r11, r11, r4			; mask in colour as left hand pixel
+               S01:000087C4:  04 B0 8B 01
+F00:0432       
+F00:0433       	andne r11, r11, #0x0F		; mask out right hand pixel
+               S01:000087C8:  0F B0 0B 12
+F00:0434       	orrne r11, r11, r4, lsl #4	; mask in colour as right hand pixel
+               S01:000087CC:  04 B2 8B 11
+F00:0435       
+F00:0436       	strb r11, [r10]				; store screen byte
+               S01:000087D0:  00 B0 CA E5
+F00:0437       	mov pc, lr
+               S01:000087D4:  0E F0 A0 E1
+F00:0438       
+F00:0439       ; R0=x, R1=y, R12=screen_addr, trashes r10
+F00:0440       ; returns R4=colour
+F00:0441       read_pixel:
+F00:0442       	; ptr = screen_addr + starty * screen_stride + startx DIV 2
+F00:0443       	add r10, r12, r1, lsl #7	; r10 = screen_addr + starty * 128
+               S01:000087D8:  81 A3 8C E0
+F00:0444       	add r10, r10, r1, lsl #5	; r10 += starty * 32 = starty * 160
+               S01:000087DC:  81 A2 8A E0
+F00:0445       	add r10, r10, r0, lsr #1	; r10 += startx DIV 2
+               S01:000087E0:  A0 A0 8A E0
+F00:0446       
+F00:0447       	ldrb r4, [r10]				; load screen byte
+               S01:000087E4:  00 40 DA E5
+F00:0448       
+F00:0449       	tst r0, #1					; odd or even pixel?
+               S01:000087E8:  01 00 10 E3
+F00:0450       	andeq r4, r4, #0x0F			; mask out right hand pixel
+               S01:000087EC:  0F 40 04 02
+F00:0451       	movne r4, r4, lsr #4		; mask out left hand pixel
+               S01:000087F0:  24 42 A0 11
+F00:0452       	mov pc, lr
+               S01:000087F4:  0E F0 A0 E1
+F00:0453       
+F00:0454       ; R1=y, R4=colour
+F00:0455       plot_horizontal_line:
+F00:0456       	str lr, [sp, #-4]!
+               S01:000087F8:  04 E0 2D E5
+F00:0457       	mov r0, #0
+               S01:000087FC:  00 00 A0 E3
+F00:0458       	.1:
+F00:0459       	bl plot_pixel
+               S01:00008800:  E9 FF FF EB
+F00:0460       	add r0, r0, #1
+               S01:00008804:  01 00 80 E2
+F00:0461       	cmp r0, #Screen_Width
+               S01:00008808:  05 0D 50 E3
+F00:0462       	blt .1
+               S01:0000880C:  FB FF FF BA
+F00:0463       	ldr pc, [sp], #4
+               S01:00008810:  04 F0 9D E4
+F00:0464       
+F00:0465       ; DOOM FIRE!
+F00:0466       do_fire:
+F00:0467       	str lr, [sp, #-4]!
+               S01:00008814:  04 E0 2D E5
+F00:0468       
+F00:0469       	ldr r8, rnd_seed			; seed
+               S01:00008818:  60 80 9F E5
+F00:0470       	mov r9, #1					; bit
+               S01:0000881C:  01 90 A0 E3
+F00:0471       
+F00:0472       	mov r3, #Screen_Height - 64
+               S01:00008820:  C0 30 A0 E3
+F00:0473       	.1:
+F00:0474       	mov r2, #0
+               S01:00008824:  00 20 A0 E3
+F00:0475       	.2:
+F00:0476       	bl rnd
+               S01:00008828:  15 00 00 EB
+F00:0477       
+F00:0478       	; spread fire
+F00:0479       	mov r0, r2
+               S01:0000882C:  02 00 A0 E1
+F00:0480       	mov r1, r3					; source
+               S01:00008830:  03 10 A0 E1
+F00:0481       	bl read_pixel
+               S01:00008834:  E7 FF FF EB
+F00:0482       	cmp r4, #0
+               S01:00008838:  00 00 54 E3
+F00:0483       	beq .3
+               S01:0000883C:  05 00 00 0A
+F00:0484       
+F00:0485       	and r7, r8, #1				; rnd & 1
+               S01:00008840:  01 70 08 E2
+F00:0486       	subs r4, r4, r7				; colour -= rnd & 1
+               S01:00008844:  07 40 54 E0
+F00:0487       ;	movlt r4, #0
+F00:0488       
+F00:0489       	and r7, r8, #3
+               S01:00008848:  03 70 08 E2
+F00:0490       	add r0, r2, r7
+               S01:0000884C:  07 00 82 E0
+F00:0491       	subs r0, r0, #1				; dest_x += (rnd & 3)-1
+               S01:00008850:  01 00 50 E2
+F00:0492       	movlt r0, #0
+               S01:00008854:  00 00 A0 B3
+F00:0493       	.3:
+F00:0494       	sub r1, r3, #1				; dest
+               S01:00008858:  01 10 43 E2
+F00:0495       	bl plot_pixel
+               S01:0000885C:  D2 FF FF EB
+F00:0496       
+F00:0497       	add r2, r2, #1
+               S01:00008860:  01 20 82 E2
+F00:0498       	cmp r2, #Screen_Width
+               S01:00008864:  05 0D 52 E3
+F00:0499       	blt .2
+               S01:00008868:  EE FF FF BA
+F00:0500       
+F00:0501       	add r3, r3, #1
+               S01:0000886C:  01 30 83 E2
+F00:0502       	cmp r3, #Screen_Height	
+               S01:00008870:  01 0C 53 E3
+F00:0503       	blt .1
+               S01:00008874:  EA FF FF BA
+F00:0504       
+F00:0505       	str r8, rnd_seed
+               S01:00008878:  00 80 8F E5
+F00:0506       
+F00:0507       	ldr pc, [sp], #4
+               S01:0000887C:  04 F0 9D E4
+F00:0508       
+F00:0509       rnd_seed:
+F00:0510       	.long 0x12345678
+               S01:00008880:  78 56 34 12
+F00:0511       
+F00:0512       rnd:
+F00:0513       ; enter with seed in R0 (32 bits), R1 (1 bit in least significant bit)
+F00:0514       ; R2 is used as a temporary register.
+F00:0515       ; on exit the new seed is in R0 and R1 as before
+F00:0516       ; Note that a seed of 0 will always produce a new seed of 0.
+F00:0517       ; All other values produce a maximal length sequence.
+F00:0518       ;
+F00:0519       ; Moved to R11 as temp, R8 as seed and R9 and bit
+F00:0520           TST    R9, R9, LSR #1                       ; top bit into Carry
+               S01:00008884:  A9 00 19 E1
+F00:0521           MOVS   R11, R8, RRX                         ; 33 bit rotate right
+               S01:00008888:  68 B0 B0 E1
+F00:0522           ADC    R9, R9, R9                           ; carry into lsb of R1
+               S01:0000888C:  09 90 A9 E0
+F00:0523           EOR    R11, R11, R8, LSL #12                ; (involved!)
+               S01:00008890:  08 B6 2B E0
+F00:0524           EOR    R8, R11, R11, LSR #20                ; (similarly involved!)
+               S01:00008894:  2B 8A 2B E0
+F00:0525       	mov    pc, lr
+               S01:00008898:  0E F0 A0 E1
+F00:0526       
+
+
+Sections:
+S01  seg8000
+
+
+Sources:
+F00  doom-fire.asm
+F01  swis.h.asm
+F02  colour
+F03  colour_lerp
+F04  colour_lerp
+F05  colour_lerp
+F06  colour_lerp
+F07  colour_lerp
+F08  colour_lerp
+F09  colour_lerp
+F10  colour_lerp
+F11  colour_lerp
+F12  colour_lerp
+F13  colour_lerp
+F14  colour_lerp
+F15  colour_lerp
+F16  colour_lerp
+F17  colour_lerp
+
+
+Symbols:
+ do_fire .3 EXPR(34904=0x8858) ABS 
+rnd EXPR(34948=0x8884) ABS 
+ do_fire .2 EXPR(34856=0x8828) ABS 
+ do_fire .1 EXPR(34852=0x8824) ABS 
+rnd_seed EXPR(34944=0x8880) ABS 
+ plot_horizontal_line .1 EXPR(34816=0x8800) ABS 
+read_pixel EXPR(34776=0x87d8) ABS 
+plot_pixel EXPR(34732=0x87ac) ABS 
+ window_cls .1 EXPR(34680=0x8778) ABS 
+window_cls EXPR(34640=0x8750) UNUSED ABS 
+ set_palette .1 EXPR(34540=0x86ec) ABS 
+palette_data EXPR(34560=0x8700) ABS 
+buffer_pending EXPR(34452=0x8694) UNUSED ABS 
+last_vsync EXPR(34448=0x8690) UNUSED ABS 
+screen_addr_input EXPR(34328=0x8618) ABS 
+debug_write_32 EXPR(34264=0x85d8) UNUSED ABS 
+debug_write_16 EXPR(34232=0x85b8) UNUSED ABS 
+debug_write_r0 EXPR(34200=0x8598) UNUSED ABS 
+debug_string EXPR(34296=0x85f8) ABS 
+vsync_count EXPR(34444=0x868c) ABS 
+wtaf_pad EXPR(34124=0x854c) UNUSED ABS 
+exit EXPR(34340=0x8624) ABS 
+do_fire EXPR(34836=0x8814) ABS 
+debug_write_vsync_count EXPR(34164=0x8574) ABS 
+main_loop EXPR(34032=0x84f0) ABS 
+plot_horizontal_line EXPR(34808=0x87f8) ABS 
+screen_addr EXPR(34336=0x8620) ABS 
+get_screen_addr EXPR(34308=0x8604) ABS 
+event_handler EXPR(34416=0x8670) ABS 
+error_handler EXPR(34456=0x8698) ABS 
+ main .1 EXPR(33924=0x8484) ABS 
+set_palette EXPR(34524=0x86dc) ABS 
+error_noscreenmem EXPR(34124=0x854c) ABS 
+scr_bank EXPR(33800=0x8408) ABS 
+main EXPR(33804=0x840c) ABS 
+stack_base EXPR(33800=0x8408) ABS 
+Start EXPR(32768=0x8000) UNUSED ABS 
+QTM_SetSampleSpeed EXPR(294473=0x47e49) UNUSED 
+QTM_Stop EXPR(294466=0x47e42) UNUSED 
+QTM_Start EXPR(294465=0x47e41) UNUSED 
+QTM_Load EXPR(294464=0x47e40) UNUSED 
+OS_ConvertHex8 EXPR(212=0xd4) 
+OS_ConvertHex4 EXPR(210=0xd2) 
+OS_ConvertHex2 EXPR(209=0xd1) 
+Event_VSync EXPR(4=0x4) 
+EventV EXPR(16=0x10) 
+ErrorV EXPR(1=0x1) 
+OS_AddToVector EXPR(71=0x47) 
+OS_Release EXPR(32=0x20) 
+OS_Claim EXPR(31=0x1f) 
+VD_ScreenStart EXPR(148=0x94) 
+DynArea_Screen EXPR(2=0x2) 
+IKey_Space EXPR(157=0x9d) 
+IKey_RightClick EXPR(244=0xf4) UNUSED 
+IKey_LeftClick EXPR(246=0xf6) UNUSED 
+OSWord_WritePalette EXPR(12=0xc) UNUSED 
+OSByte_ReadKey EXPR(129=0x81) 
+OSByte_WriteDisplayBank EXPR(113=0x71) 
+OSByte_WriteVDUBank EXPR(112=0x70) 
+OSByte_Vsync EXPR(19=0x13) 
+OSByte_EventDisable EXPR(13=0xd) 
+OSByte_EventEnable EXPR(14=0xe) 
+OS_ConvertCardinal4 EXPR(216=0xd8) UNUSED 
+OS_ReadDynamicArea EXPR(92=0x5c) 
+OS_ReadMonotonicTime EXPR(66=0x42) UNUSED 
+OS_ReadVduVariables EXPR(49=0x31) 
+OS_GenerateError EXPR(43=0x2b) 
+OS_ChangeDynamicArea EXPR(42=0x2a) 
+OS_BreakPt EXPR(23=0x17) UNUSED 
+OS_Exit EXPR(17=0x11) 
+OS_File EXPR(8=0x8) UNUSED 
+OS_Word EXPR(7=0x7) 
+XOS_Byte EXPR(131078=0x20006) UNUSED 
+OS_Byte EXPR(6=0x6) 
+OS_NewLine EXPR(3=0x3) UNUSED 
+OS_WriteO EXPR(2=0x2) 
+OS_WriteC EXPR(0=0x0) 
+Window_Bytes EXPR(32000=0x7d00) 
+Window_Stride EXPR(160=0xa0) 
+Screen_Bytes EXPR(40960=0xa000) 
+Screen_Stride EXPR(160=0xa0) 
+Window_Height EXPR(200=0xc8) 
+Window_Width EXPR(256=0x100) UNUSED 
+Screen_Height EXPR(256=0x100) 
+Screen_Width EXPR(320=0x140) 
+Screen_Mode EXPR(9=0x9) 
+Screen_Banks EXPR(1=0x1) 
+_DEBUG EXPR(1=0x1) 
+__VASM EXPR(0=0x0) INTERNAL 
+
+There have been no errors.
