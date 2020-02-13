@@ -537,8 +537,7 @@ do_fire:
 	ldrb r5, [r10], #1			; load screen byte
 
 	; Left pixel
-	mov r4, r5, lsr #4			; mask out left hand pixel
-	cmp r4, #0
+	ands r4, r5, #0x0F
 	moveq r0, r2
 	beq .3
 	RND
@@ -548,8 +547,7 @@ do_fire:
 	add r2, r2, #1
 
 	; Right pixel
-	and r4, r5, #0x0F
-	cmp r4, #0
+	movs r4, r5, lsr #4			; mask out left hand pixel
 	moveq r0, r2
 	beq .4
 	RND
