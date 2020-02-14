@@ -115,7 +115,6 @@ main_loop:
 	bl debug_write_vsync_count
 
 	; Block if we've not even had a vsync since last time - we're >50Hz!
-.if Screen_Banks > 2
 	ldr r1, last_vsync
 .1:
 	ldr r2, vsync_count
@@ -123,6 +122,7 @@ main_loop:
 	beq .1
 	str r2, last_vsync
 
+.if Screen_Banks > 2
 	; Swap banks
 	; Display whichever bank we've just written to
 	ldr r1, scr_bank			; bank we want to display next
@@ -185,6 +185,8 @@ debug_write_vsync_count:
 	swi OS_WriteC
 
 	ldr r0, vsync_count
+	ldr r1, last_vsync
+	sub r0, r0, r1
 	adr r1, debug_string
 	mov r2, #8
 	swi OS_ConvertHex4
@@ -479,8 +481,8 @@ plot_horizontal_line:
 	movlt r0, #0				; or MOD ScreenWidth
 
 	; update colour with some randomness
-	and r7, r7, #1				; rnd & 1
-	subs r4, r4, r7				; colour -= rnd & 1
+;	and r7, r7, #1				; rnd & 1
+	subs r4, r4, r7, lsr #1		; colour -= rnd & 1
 .endm
 
 .macro PLOT_PIXEL_BIT
@@ -515,7 +517,7 @@ do_fire:
 	ldr r8, rnd_seed			; seed
 	mov r9, #1					; bit
 
-	mov r3, #Screen_Height - 48
+	mov r3, #Screen_Height - 63
 
 	; R10 = ptr to start of source line
 	add r10, r12, r3, lsl #7	; r10 = screen_addr + y * 128
