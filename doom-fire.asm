@@ -479,31 +479,22 @@ plot_horizontal_line:
 	add r0, r2, r7
 	subs r0, r0, #1				; dest_x += (rnd & 3)-1
 	movlt r0, #0				; or MOD ScreenWidth
-
-	; update colour with some randomness
-;	and r7, r7, #1				; rnd & 1
 	subs r4, r4, r7, lsr #1		; colour -= rnd & 1
 .endm
 
 .macro PLOT_PIXEL_BIT
-	add r6, r12, r0, lsr #1		; r6 = dest_start + x DIV 2
-
-	ldrb r11, [r6]				; load screen byte
-	tst r0, #1					; odd or even pixel?
-	andeq r11, r11, #0xF0		; mask out left hand pixel
-	orreq r11, r11, r4			; mask in colour as left hand pixel
-	andne r11, r11, #0x0F		; mask out right hand pixel
-	orrne r11, r11, r4, lsl #4	; mask in colour as right hand pixel
-	strb r11, [r6]				; store screen byte
+	orr r11, r4, r4, lsl #4
+	strb r11, [r12, r0]			; dest_start + x
+	strb r11, [r6, r0]			; dest_start + x
 .endm
 
 ; DOOM FIRE!
 ; R0 = x
 ; R1 = y
 ; R2 = x
-; R3 = y
+; R3 = end of screen address (for loop termination)
 ; R4 = pixel colour
-; R5 = screen byte
+; R5 = screen word
 ; R6 = ptr
 ; R7 = rnd temp
 ; R8 = seed
@@ -515,9 +506,9 @@ do_fire:
 	str lr, [sp, #-4]!
 
 	ldr r8, rnd_seed			; seed
-	mov r9, #1					; bit
+	ldr r9, bits_mask			; bit
 
-	mov r3, #Screen_Height - 63
+	mov r3, #Screen_Height - 123
 
 	; R10 = ptr to start of source line
 	add r10, r12, r3, lsl #7	; r10 = screen_addr + y * 128
@@ -529,7 +520,8 @@ do_fire:
 	add r3, r3, r2, lsl #5	; r10 += y * 32 = y * 160
 
 	; R12 = ptr to start of dest line
-	sub r12, r10, #Screen_Stride
+	sub r12, r10, #Screen_Stride*2
+	add r6, r12, #Screen_Stride
 
 	.1:
 	mov r2, #0
@@ -539,7 +531,7 @@ do_fire:
 	RND
 
 	; source is contiguous
-	; read source word = 8x pixels
+	; read source word = 4x pixels
 	ldr r5, [r10], #4
 
 	; Byte 0 Left pixel
@@ -548,17 +540,6 @@ do_fire:
 	beq .3
 	DO_RANDOM_BIT
 	.3:
-	PLOT_PIXEL_BIT
-	add r2, r2, #1
-
-	; Byte 0 Right pixel
-	mov r4, r5, lsr #4
-	ands r4, r4, #0x0F
-	moveq r0, r2
-	beq .4
-	mov r7, r8, lsr #4
-	DO_RANDOM_BIT
-	.4:
 	PLOT_PIXEL_BIT
 	add r2, r2, #1
 
@@ -573,17 +554,6 @@ do_fire:
 	PLOT_PIXEL_BIT
 	add r2, r2, #1
 
-	; Byte 1 Right pixel
-	mov r4, r5, lsr #12
-	ands r4, r4, #0x0F
-	moveq r0, r2
-	beq .6
-	mov r7, r8, lsr #12
-	DO_RANDOM_BIT
-	.6:
-	PLOT_PIXEL_BIT
-	add r2, r2, #1
-
 	; Byte 2 Left pixel
 	mov r4, r5, lsr #16
 	ands r4, r4, #0x0F
@@ -592,17 +562,6 @@ do_fire:
 	mov r7, r8, lsr #16
 	DO_RANDOM_BIT
 	.7:
-	PLOT_PIXEL_BIT
-	add r2, r2, #1
-
-	; Byte 2 Right pixel
-	mov r4, r5, lsr #20
-	ands r4, r4, #0x0F
-	moveq r0, r2
-	beq .8
-	mov r7, r8, lsr #20
-	DO_RANDOM_BIT
-	.8:
 	PLOT_PIXEL_BIT
 	add r2, r2, #1
 
@@ -617,21 +576,13 @@ do_fire:
 	PLOT_PIXEL_BIT
 	add r2, r2, #1
 
-	; Byte 2 Right pixel
-	movs r4, r5, lsr #28
-	moveq r0, r2
-	beq .10
-	mov r7, r8, lsr #28
-	DO_RANDOM_BIT
-	.10:
-	PLOT_PIXEL_BIT
-	add r2, r2, #1
-
-	cmp r2, #Screen_Width
+	cmp r2, #Screen_Stride
 	blt .2
 
 	; Next line
-	add r12, r12, #Screen_Stride
+	add r10, r10, #Screen_Stride
+	add r6, r6, #2*Screen_Stride
+	add r12, r12, #2*Screen_Stride
 	cmp r12, r3
 	blt .1
 
@@ -641,6 +592,9 @@ do_fire:
 
 rnd_seed:
 	.long 0x87654321
+
+bits_mask:
+	.long 0x11111111
 
 rnd:
 ; enter with seed in R0 (32 bits), R1 (1 bit in least significant bit)

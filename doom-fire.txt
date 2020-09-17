@@ -1,0 +1,61 @@
+DOOM Fire
+~~~
+
+ function spreadFire(src) {
+    var rand = Math.round(Math.random() * 3.0) & 3;
+    var dst = src - rand + 1;
+    firePixels[dst - FIRE_WIDTH ] = firePixels[src] - (rand & 1);
+ }
+
+ function doFire() {
+    for(x=0 ; x < FIRE_WIDTH; x++) {
+        for (y = 1; y < FIRE_HEIGHT; y++) {
+            spreadFire(y * FIRE_WIDTH + x);
+        }
+    }
+ }
+
+If word is 8x pixels: screen word = 0x87654321
+Then could propagate heat in one go
+word -= rand & 0x11111111
+But need to clamp to zero.
+
+word & 0x88888888 >> 3 | word & 0x44444444 >> 2 | word & 0x22222222 >> 1 | word & 0x11111111
+Would give us a rand_mask with zeros where pixels were 0.
+
+bits_mask = 0x11111111
+
+and temp, screen_word, bits_mask, lsl #3    ; 0x88888888
+mov rand_mask, temp, lsr #3
+and temp, screen_word, bits_mask, lsl #2    ; 0x44444444
+orr rand_mask, rand_mask, temp, lsr #2
+and temp, screen_word, bits_mask, lsl #1    ; 0x22222222
+orr rand_mask, rand_mask, temp, lsr #1
+and temp, screen_word, bits_mask
+orr rand_mask, rand_mask, temp
+
+and temp, rand, rand_mask                   ; rand & rand_mask
+sub screen_word, screen_word, temp          ; screen_word -= rand & rand_mask
+
+Seems like this would be faster.
+In terms of writing pixels - can only move +1/-1 from current X so one word
+worth of destination can only affect +1/-1 words either side.
+Keep a running buffer of 3 words?!
+
+	; and temp, screen_word, bits_mask, lsl #3    ; 0x88888888
+	and r11, r5, r9, lsl #3
+	; mov rand_mask, temp, lsr #3
+	mov r7, r11, lsr #3
+
+	and r11, r5, r9, lsl #2     ; 0x44444444
+	orr r7, r7, r11, lsr #2
+	and r11, r5, r9, lsl #1     ; 0x22222222
+	orr r7, r7, r11, lsr #1
+	and r11, r5, r9				; 0x11111111
+	orr r7, r7, r11
+
+	and r11, r8, r7				; rand & rand_mask
+	sub r5, r5, r11				; screen_word -= rand & rand_mask
+
+Reduce resolution to 160x64...
+Would still only give about 15 cycles per pixel!
